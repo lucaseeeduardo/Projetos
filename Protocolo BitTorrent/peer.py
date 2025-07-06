@@ -11,9 +11,9 @@ import logging
 import select
 
 # --- Configuration ---
-PIECE_SIZE = 512 * 1024  # 512 KB per piece
+PIECE_SIZE = 100 * 1024  # 512 KB per piece
 UPDATE_INTERVAL = 30     # Seconds between tracker updates
-REQUEST_TIMEOUT = 10     # Seconds to wait for a piece response
+REQUEST_TIMEOUT = 60     # Seconds to wait for a piece response
 MAX_CONNECTIONS = 5      # Max concurrent downloads/uploads
 LOG_LEVEL = logging.INFO
 # ---------------------
@@ -92,7 +92,7 @@ def send_tracker_update(udp_sock):
     """Sends the current list of owned pieces to the tracker."""
     with state_lock:
         pieces_str = ",".join(map(str, sorted(list(owned_pieces))))
-    message = f"UPDATE {my_ip} {my_tcp_port} [{pieces_str}]"
+    message = f"UPDATE {my_tcp_port} [{pieces_str}]"
     try:
         udp_sock.sendto(message.encode("utf-8"), tracker_addr)
         logging.debug(f"Sent UPDATE to tracker: {len(owned_pieces)} pieces")
@@ -121,6 +121,10 @@ def handle_peer_connection(conn, addr):
 
         message = data.decode("utf-8")
         logging.debug(f"Received request from {addr}: {message}")
+        if message.strip() == "SIZE":
+            file_size = os.path.getsize(target_file_path)
+            conn.sendall(str(file_size).encode("utf-8"))
+            return
         # se a mensagem começar com GET, então tá mandando um pedido de pedaço, daí manda esse pedaço no sendall ali embaixo
         # notar que o sendall é um loop que itera sobre os bytes até enviar todos os bytes, mesmo que sejam muitos bytes
         # o ideal aqui não seria ele fazer só um chamada? já que cada piece é um pacote de bytes fechado. 
@@ -250,7 +254,7 @@ def choose_piece_to_download():
     logging.info(f"Chosen piece {rarest_needed_piece} (rarity: {rarity.get(rarest_needed_piece, 0)}) from peer {chosen_peer_id}")
     return rarest_needed_piece, chosen_peer_info
 
-def download_piece(piece_index, peer_info):
+def download_piece(piece_index, peer_info, udp_sock):
     """Attempts to download a specific piece from a given peer."""
     peer_addr = (peer_info["ip"], peer_info["tcp_port"])
     logging.info(f"Attempting to download piece {piece_index} from {peer_addr}")
@@ -260,20 +264,21 @@ def download_piece(piece_index, peer_info):
         sock.connect(peer_addr)
         message = f"GET {piece_index}"
         sock.sendall(message.encode("utf-8"))
-
         # Receive the piece data
         received_data = b""
         expected_size = get_piece_size(piece_index)
         while len(received_data) < expected_size:
             chunk = sock.recv(4096) # Read in chunks
+            print("received chunk: ", len(chunk))
             if not chunk:
                 logging.error(f"Connection closed by {peer_addr} while downloading piece {piece_index}. Received {len(received_data)}/{expected_size} bytes.")
-                return False # Connection broken
+                break # Connection broken
             received_data += chunk
 
-        if len(received_data) > expected_size:
-             logging.warning(f"Received more data ({len(received_data)}) than expected ({expected_size}) for piece {piece_index} from {peer_addr}. Truncating.")
+        if len(received_data) != expected_size:
+             logging.warning(f"Dados recebidos ({len(received_data)}) é diferente do esperado ({expected_size}) para o pedaço {piece_index} from {peer_addr}. Truncating.")
              received_data = received_data[:expected_size]
+        logging.info(f"Recebido {len(received_data)} de {expected_size}")
 
         logging.info(f"Successfully received piece {piece_index} ({len(received_data)} bytes) from {peer_addr}")
 
@@ -286,7 +291,18 @@ def download_piece(piece_index, peer_info):
             logging.info(f"Successfully saved piece {piece_index}. Owned: {len(owned_pieces)}/{total_pieces}")
             # Immediately inform tracker about the new piece
             # Consider doing this less frequently if it causes too much traffic
-            # send_tracker_update(udp_sock) # Need udp_sock here, maybe pass it?
+            send_tracker_update(udp_sock) # Need udp_sock here
+            if len(owned_pieces) == total_pieces:
+                logging.info("All pieces downloaded! Download complete.")
+                # Optionally, send a final update to tracker
+                # Renomeia o arquivo após o download completo
+                novo_nome = target_file_path.replace('incompleto', '')
+                try:
+                    os.rename(target_file_path, novo_nome)
+                    logging.info(f"Arquivo renomeado para: {novo_nome}")
+                except Exception as e:
+                    logging.error(f"Erro ao renomear arquivo: {e}")
+
             return True
         else:
             logging.error(f"Failed to write piece {piece_index} to file.")
@@ -342,40 +358,31 @@ def write_piece(piece_index, data):
     """Writes a downloaded piece to the correct position in the output file."""
     try:
         # Use r+b to allow writing without truncating
-        with open(output_file_path, "r+b") as f:
+        with open(target_file_path, "r+b") as f:
             start_offset = piece_index * PIECE_SIZE
             f.seek(start_offset)
             f.write(data)
         return True
     except OSError as e:
-        logging.error(f"Error writing piece {piece_index} to {output_file_path}: {e}")
+        logging.error(f"Error writing piece {piece_index} to {target_file_path}: {e}")
         return False
     except Exception as e:
         logging.error(f"Unexpected error writing piece {piece_index}: {e}", exc_info=True)
         return False
 
-def initialize_output_file():
+def initialize_output_file(file_size):
     """Creates or ensures the output file exists with the correct size, filled with null bytes."""
-    global output_file_path
     try:
-        file_size = os.path.getsize(target_file_path)
-        output_dir = os.path.dirname(output_file_path)
-        if output_dir:
-             os.makedirs(output_dir, exist_ok=True)
-
-        if not os.path.exists(output_file_path) or os.path.getsize(output_file_path) != file_size:
-            logging.info(f"Initializing output file {output_file_path} with size {file_size}")
-            with open(output_file_path, "wb") as f:
-                # Pre-allocate the file space (more efficient than seeking and writing nulls)
-                f.seek(file_size - 1)
+        os.makedirs(os.path.dirname(target_file_path) or ".", exist_ok=True)
+        if not os.path.exists(target_file_path) or os.path.getsize(target_file_path) != file_size:
+            with open(target_file_path, "wb") as f:
+                f.seek(file_size-1)
                 f.write(b"\0")
-        else:
-            logging.info(f"Output file {output_file_path} already exists with correct size.")
-            # Optional: Scan existing file to see which pieces are already complete?
-            # For simplicity, we assume we start fresh or continue based on owned_pieces set.
+        logging.info(f"Output criado/completo: {target_file_path} ({file_size} bytes)")
+
 
     except OSError as e:
-        logging.critical(f"Failed to initialize output file {output_file_path}: {e}")
+        logging.critical(f"Failed to initialize output file {target_file_path}: {e}")
         return False
     except Exception as e:
         logging.critical(f"Unexpected error initializing output file: {e}", exc_info=True)
@@ -389,12 +396,15 @@ def download_manager(udp_sock):
         with state_lock:
             if len(owned_pieces) == total_pieces:
                 logging.info("Download complete! All pieces acquired.")
+                
+                is_seeder = True
+                send_tracker_update(udp_sock) # Final update to tracker
                 break # Exit download loop
 
         piece_index, peer_info = choose_piece_to_download()
 
         if piece_index is not None and peer_info is not None:
-            if download_piece(piece_index, peer_info):
+            if download_piece(piece_index, peer_info, udp_sock):
                 # Success, loop will continue to choose next piece
                 # Send update immediately after getting a piece
                 send_tracker_update(udp_sock)
@@ -416,37 +426,63 @@ def download_manager(udp_sock):
                  break
 
     logging.info("Download manager stopped.")
-    # Signal other threads to shut down if download completes or manager stops
-    shutdown_flag.set()
+    if not is_seeder:
+       logging.info("Download manager started.")
+       download_manager()
+       logging.info("Download manager stopped.")
+
+    else:
+        logging.info("Modo Seeder: servindo até Ctrl+C")
+        try:
+            while not shutdown_flag.is_set():
+                shutdown_flag.wait(timeout=1.0)
+        except KeyboardInterrupt:
+            logging.info("Ctrl+C recebido no seeder. Finalizando...")
+            shutdown_flag.set()
+
 
 def main():
-    global total_pieces, target_file_path, output_file_path, my_tcp_port, my_ip, tracker_addr, peer_id
+    global total_pieces, target_file_path, my_tcp_port, my_ip, tracker_addr, peer_id, is_seeder
 
     parser = argparse.ArgumentParser(description="P2P File Sharing Client (BitTorrent Simulation)")
     parser.add_argument("target_file", help="Path to the file to share/download.")
     parser.add_argument("--tracker", required=True, help="Tracker address HOST:PORT")
     parser.add_argument("--listen-port", type=int, required=True, help="TCP port for peer connections")
-    parser.add_argument("--output-file", help="Path to save the downloaded file (defaults to <target_file>.downloaded)")
     args = parser.parse_args()
+    # pra diferenciar leecher de seeder, eu verifico se o arquivo de entrada existe.
+    # se existir, verifico se existe algum outro peer que já tenha esse arquivo e mando um SIZE pra ele
+    # caso esse size seja menor que o meu, eu sou seeder.
 
+    my_tcp_port = args.listen_port 
     target_file_path = args.target_file
-    my_tcp_port = args.listen_port
-    output_file_path = args.output_file if args.output_file else target_file_path + ".downloaded"
+    is_seeder = os.path.exists(target_file_path)
+    
+    if not is_seeder:
+        target_file_path += 'incompleto'
+
 
     # Validate target file
-    if not os.path.isfile(target_file_path):
+    if not os.path.isfile(target_file_path) and is_seeder:
         logging.critical(f"Target file not found or is not a file: {target_file_path}")
         return
-    try:
-        file_size = os.path.getsize(target_file_path)
-        if file_size == 0:
-             logging.critical(f"Target file is empty: {target_file_path}")
-             return
-        total_pieces = math.ceil(file_size / PIECE_SIZE)
-        logging.info(f"Target file: {target_file_path}, Size: {file_size} bytes, Pieces: {total_pieces}")
-    except OSError as e:
-        logging.critical(f"Cannot access target file: {e}")
-        return
+    if is_seeder:
+        try:
+            file_size = os.path.getsize(target_file_path)
+
+
+            if file_size == 0:
+                logging.critical(f"Target file is empty: {target_file_path}")
+                return
+            
+            total_pieces = math.ceil(file_size / PIECE_SIZE)
+            logging.info(f"Arquivo local: {target_file_path}, Tamanho: {file_size} bytes, Pedaços: {total_pieces}")
+
+            # se eu passar o arg de output é pq eu to sendo o seeder.
+            if(is_seeder):
+                owned_pieces.update(range(total_pieces))
+        except OSError as e:
+            logging.critical(f"Cannot access target file: {e}")
+            return
 
     # Parse tracker address
     try:
@@ -454,30 +490,14 @@ def main():
         tracker_port = int(tracker_port_str)
         tracker_addr = (tracker_host, tracker_port)
     except (ValueError, IndexError):
-        logging.critical(f"Invalid tracker address format. Use HOST:PORT. Got: {args.tracker}")
+        logging.critical(f"Endereço do tracker inválido. Precisa ser HOST:PORT. Retorno: {args.tracker}")
         return
 
     # Determine own IP and Peer ID
     my_ip = get_my_ip()
     peer_id = f"{my_ip}:{my_tcp_port}"
     logging.info(f"Peer starting with ID: {peer_id}")
-
-    # Initialize output file
-    if not initialize_output_file():
-        return # Critical error during initialization
-
-    # --- Determine initially owned pieces (if file exists and matches target) ---
-    # For simplicity, assume we start with zero pieces unless output == target
-    if os.path.abspath(target_file_path) == os.path.abspath(output_file_path):
-         logging.info("Acting as a seeder (output file is the target file). Assuming all pieces are owned.")
-         with state_lock:
-              owned_pieces.update(range(total_pieces))
-    else:
-         # TODO: Implement piece checking for resuming downloads if needed
-         logging.info("Starting download. Assuming zero pieces initially.")
-         pass
-
-    # --- UDP Socket for Tracker Communication ---
+        # --- UDP Socket for Tracker Communication ---
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_sock.settimeout(5.0) # Timeout for recvfrom
 
@@ -490,6 +510,7 @@ def main():
         # aqui entendo que 2048 seja suficiente, sabendo que pode haver muitos peers e dar erro por buffer overflow
         data, _ = udp_sock.recvfrom(2048) # Larger buffer for peer list
         response = data.decode("utf-8")
+        print("<<< Lista de peeer recebida do trackr ", response)
         if response.startswith("PEERLIST"):
             initial_peers = parse_peer_list(response)
             update_known_peers(initial_peers)
@@ -510,6 +531,41 @@ def main():
         logging.error(f"Error during initial JOIN: {e}")
         udp_sock.close()
         return
+    
+    if not is_seeder:
+
+        first_peer = next(iter(known_peers.values()), None)
+        if not first_peer:
+            logging.critical("Nenhum seeder disponível para metadata. Abortando.")
+            return
+
+        size_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        size_sock.settimeout(REQUEST_TIMEOUT)
+        size_sock.connect((first_peer["ip"], first_peer["tcp_port"]))
+        size_sock.sendall(b"SIZE")
+        resp = size_sock.recv(64)
+        file_size = int(resp.decode("utf-8"))
+        size_sock.close()
+
+        # atualize total_pieces e recrie output com esse tamanho
+        total_pieces = math.ceil(file_size / PIECE_SIZE)
+        logging.info(f"Dynamic file size received: {file_size} bytes, Pieces: {total_pieces}")
+        # agora re-initialize passando o tamanho em vez de ler do target
+        if not initialize_output_file(file_size):
+            logging.critical("Erro ao criar arquivo no leecher.")
+            return
+        
+    # --- Determine initially owned pieces (if file exists and matches target) ---
+    # For simplicity, assume we start with zero pieces unless output == target
+    if is_seeder:
+         logging.info("Acting as a seeder (output file is the target file). Assuming all pieces are owned.")
+         with state_lock:
+              owned_pieces.update(range(total_pieces))
+    else:
+         # TODO: Implement piece checking for resuming downloads if needed
+         logging.info("Starting download. Assuming zero pieces initially.")
+         pass
+
 
     # --- Start Threads ---
     threads = []
@@ -529,10 +585,20 @@ def main():
 
         # Download Manager (runs in main thread or its own thread)
         # Running in main thread for simplicity here
-        download_manager(udp_sock)
+        if not is_seeder:
+            download_manager(udp_sock)
+        else:
+            logging.info("Modo Seeder: servindo até Ctrl+C")
+            try:
+                while not shutdown_flag.is_set():
+                    shutdown_flag.wait(timeout=1.0)
+            except KeyboardInterrupt:
+                logging.info("Ctrl+C recebido no seeder. Finalizando...")
+                shutdown_flag.set()
+
 
     except KeyboardInterrupt:
-        logging.info("Keyboard interrupt received. Shutting down...")
+        logging.info("Apertou CTRL + C --- DESLIGANDO...")
         shutdown_flag.set()
     except Exception as e:
         logging.critical(f"Fatal error in main loop: {e}", exc_info=True)
@@ -548,4 +614,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
