@@ -39,10 +39,11 @@ state_lock = threading.Lock() # Lock for known_peers and owned_pieces
 # --------------------
 
 def get_my_ip():
-    """Attempts to determine the primary local IP address."""
+    """Determina qual é o IP local."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # Doesn't have to be reachable
+        # esse jeito de pegar o ip é tipo fazer o sistema operacional definir qual é a interface de rede e o ip local utilizados para se conectar ao servidor dns do google.
+        # a conexão em si não acontece, porque é udp em uma porta pra tcp, mas é útil pra que o SO me mostre o ip local e eu possa obter esse valor.
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
     except Exception:
@@ -52,7 +53,7 @@ def get_my_ip():
     return ip
 
 def parse_peer_list(peer_list_str):
-    """Parses the PEERLIST string from the tracker."""
+    """Converte a lista de peers (string) que o tracker manda."""
     peers = {}
     content = peer_list_str.strip("PEERLIST []")
     if not content:
@@ -78,24 +79,25 @@ def parse_peer_list(peer_list_str):
     return peers
 
 def update_known_peers(new_peers):
-    """Updates the global known_peers dictionary safely."""
+    """Atualiza o known_peers."""
+
+    # o state lock é para travar o acesso ao "known_peers";
     with state_lock:
-        # Simple merge: Update existing, add new ones.
-        # More sophisticated logic could handle peer removal if not present in new list.
         known_peers.update(new_peers)
-        # Remove self if accidentally added
+        # esse if aqui é pra tirar eu mesmo da lista e não criar conexão de eu com eu.
         if peer_id in known_peers:
             del known_peers[peer_id]
-    logging.debug(f"Known peers updated: {len(known_peers)} peers")
+    logging.debug(f"Peers conhecidos atualizado: {len(known_peers)} peers")
 
 def send_tracker_update(udp_sock):
     """Sends the current list of owned pieces to the tracker."""
+    print("Etrnou aqui - 1")
     with state_lock:
         pieces_str = ",".join(map(str, sorted(list(owned_pieces))))
     message = f"UPDATE {my_tcp_port} [{pieces_str}]"
     try:
         udp_sock.sendto(message.encode("utf-8"), tracker_addr)
-        logging.debug(f"Sent UPDATE to tracker: {len(owned_pieces)} pieces")
+        logging.info(f"Sent UPDATE to tracker: {len(owned_pieces)} pieces")
     except socket.error as e:
         logging.error(f"Socket error sending UPDATE to tracker: {e}")
     except Exception as e:
@@ -171,7 +173,7 @@ def tcp_server_thread():
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        server_sock.bind((my_ip, my_tcp_port))
+        server_sock.bind(('0.0.0.0', my_tcp_port))
         server_sock.listen(MAX_CONNECTIONS)
         logging.info(f"TCP server listening on {my_ip}:{my_tcp_port}")
 
@@ -399,6 +401,7 @@ def download_manager(udp_sock):
                 
                 is_seeder = True
                 send_tracker_update(udp_sock) # Final update to tracker
+                logging.info("Enviado pro tracker update")
                 break # Exit download loop
 
         piece_index, peer_info = choose_piece_to_download()
@@ -444,47 +447,43 @@ def download_manager(udp_sock):
 def main():
     global total_pieces, target_file_path, my_tcp_port, my_ip, tracker_addr, peer_id, is_seeder
 
-    parser = argparse.ArgumentParser(description="P2P File Sharing Client (BitTorrent Simulation)")
-    parser.add_argument("target_file", help="Path to the file to share/download.")
-    parser.add_argument("--tracker", required=True, help="Tracker address HOST:PORT")
-    parser.add_argument("--listen-port", type=int, required=True, help="TCP port for peer connections")
+    parser = argparse.ArgumentParser(description="P2P File Sharing Client (Simulação do BitTorrent).")
+    parser.add_argument("target_file", help="Caminho do arquivo alvo pra compartilhar/baixar.")
+    parser.add_argument("--tracker", required=True, help="Tracker IP:PORTA.")
+    parser.add_argument("--listen-port", type=int, required=True, help="Porta TCP para comunicação entre peers.")
     args = parser.parse_args()
-    # pra diferenciar leecher de seeder, eu verifico se o arquivo de entrada existe.
-    # se existir, verifico se existe algum outro peer que já tenha esse arquivo e mando um SIZE pra ele
-    # caso esse size seja menor que o meu, eu sou seeder.
 
     my_tcp_port = args.listen_port 
     target_file_path = args.target_file
     is_seeder = os.path.exists(target_file_path)
     
+    # Leecher: o nome passa a ser teste2.pdfincompleto
     if not is_seeder:
         target_file_path += 'incompleto'
 
-
-    # Validate target file
+    # Validar arquivo alvo
     if not os.path.isfile(target_file_path) and is_seeder:
-        logging.critical(f"Target file not found or is not a file: {target_file_path}")
+        logging.critical(f"Arquivo alvo não existe ou não é um arquivo: {target_file_path}")
         return
+    
     if is_seeder:
         try:
             file_size = os.path.getsize(target_file_path)
 
-
             if file_size == 0:
-                logging.critical(f"Target file is empty: {target_file_path}")
+                logging.critical(f"Arquivo alvo está vazio: {target_file_path}")
                 return
             
             total_pieces = math.ceil(file_size / PIECE_SIZE)
-            logging.info(f"Arquivo local: {target_file_path}, Tamanho: {file_size} bytes, Pedaços: {total_pieces}")
+            logging.info(f"Arquivo local compartilhado: {target_file_path}, Tamanho: {file_size} bytes, Pedaços: {total_pieces}")
 
-            # se eu passar o arg de output é pq eu to sendo o seeder.
-            if(is_seeder):
-                owned_pieces.update(range(total_pieces))
+            # Assim que identifica que é seeder, já manda update pro tracker de quantos pedaços possui.
+            owned_pieces.update(range(total_pieces))
         except OSError as e:
-            logging.critical(f"Cannot access target file: {e}")
+            logging.critical(f"Não foi possível encontrar o arquivo alvo: {e}")
             return
 
-    # Parse tracker address
+    # Aqui pega a tring de IP:PORTA e faz split da string pra obter ambos em variáveis separadas.
     try:
         tracker_host, tracker_port_str = args.tracker.split(":")
         tracker_port = int(tracker_port_str)
@@ -493,28 +492,30 @@ def main():
         logging.critical(f"Endereço do tracker inválido. Precisa ser HOST:PORT. Retorno: {args.tracker}")
         return
 
-    # Determine own IP and Peer ID
+    # Aqui eu pego o meu ip e a porta 
     my_ip = get_my_ip()
     peer_id = f"{my_ip}:{my_tcp_port}"
-    logging.info(f"Peer starting with ID: {peer_id}")
-        # --- UDP Socket for Tracker Communication ---
+    logging.info(f"Peer local (EU) com IP: {peer_id}")
+    
+    # --- Criação do socket UDP para comunicação com o tracker ---
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_sock.settimeout(5.0) # Timeout for recvfrom
+    udp_sock.settimeout(5.0) # Timeout pra esperar a resposta do tracker.
 
-    # --- Initial JOIN to Tracker ---
+    # --- JOIN inicial com o Tracker ---
     join_message = f"JOIN {my_ip} {my_tcp_port}"
     try:
-        logging.info(f"Sending JOIN to tracker {tracker_addr}")
+        logging.info(f"TRK1: Enviando JOIN para o tracker {tracker_addr}")
         udp_sock.sendto(join_message.encode("utf-8"), tracker_addr)
 
-        # aqui entendo que 2048 seja suficiente, sabendo que pode haver muitos peers e dar erro por buffer overflow
+        # aqui entendo que 2048 seja suficiente, sabendo que pode haver muitos peers e dar erro por buffer overflow talvez?
         data, _ = udp_sock.recvfrom(2048) # Larger buffer for peer list
         response = data.decode("utf-8")
-        print("<<< Lista de peeer recebida do trackr ", response)
+        print("Lista de peeer recebida do trackr ", response)
+        
         if response.startswith("PEERLIST"):
             initial_peers = parse_peer_list(response)
             update_known_peers(initial_peers)
-            logging.info(f"Received initial peer list from tracker: {len(initial_peers)} peers")
+            logging.info(f"TRK 2: Tracker respondeu: {len(initial_peers)} peers")
         else:
             logging.warning(f"Unexpected response from tracker after JOIN: {response}")
 

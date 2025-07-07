@@ -39,7 +39,7 @@ def format_peer_list(exclude_peer_id=None):
                 continue
             pieces_str = ','.join(map(str, sorted(list(data['pieces']))))
             peer_strings.append(f"{data['ip']}:{data['tcp_port']}:[{pieces_str}]")
-    return f"PEERLIST [{'';'.join(peer_strings)}]"
+    return f"PEERLIST [{';'.join(peer_strings)}]"
 
 def cleanup_inactive_peers():
     """Periodically checks for and removes inactive peers."""
