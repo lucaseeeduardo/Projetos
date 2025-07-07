@@ -13,3 +13,5 @@ Exemplo real: C:/Python312/python.exe peer.py teste2.pdf --tracker 10.20.180.141
 # OBSERVAÇÕES:
 1) A comunicação dos peers com o tracker é via UDP, então é necessário verificar se o firewall entre eles está liberando a porta tanto do tracker quanto dos peers para receber UDP.
 2) A comunicação dos peers entre si ocorre via TCP, então precisa avaliar se estão conseguindo trocar pacotes e se o handshake ocorre sem erros. 
+
+# OBS IMPORTANTE: Troquei o socket bind pra ser 0.0.0.0 pq testei local com portas diferentes. quando for teste entre computadores com ips diferentes, pode seguir o my_ip que vem da interface de rede que o sistema operacional mostra quando cria o client de comunicação TCP/UDP
