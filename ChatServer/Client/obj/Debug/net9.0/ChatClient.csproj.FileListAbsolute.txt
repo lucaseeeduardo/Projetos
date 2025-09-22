@@ -1,0 +1,30 @@
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.exe
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.deps.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.runtimeconfig.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.pdb
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.AssemblyInfoInputs.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.AssemblyInfo.cs
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.csproj.CoreCompileInputs.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.sourcelink.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\refint\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.pdb
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.genruntimeconfig.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Programação Para Dispositivos Móveis\ChatServer\ChatClient\obj\Debug\net9.0\ref\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.exe
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.deps.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.runtimeconfig.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\bin\Debug\net9.0\ChatClient.pdb
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.AssemblyInfoInputs.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.AssemblyInfo.cs
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.csproj.CoreCompileInputs.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.sourcelink.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\refint\ChatClient.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.pdb
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ChatClient.genruntimeconfig.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\ChatClient\obj\Debug\net9.0\ref\ChatClient.dll
