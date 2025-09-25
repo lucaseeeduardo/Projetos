@@ -97,13 +97,29 @@ compile_project() {
     fi
 }
 
-# Função para iniciar o RMI Registry
+# Função para iniciar o RMI Registry em tmux
 start_rmi_registry() {
     echo -e "${YELLOW}Iniciando RMI Registry...${NC}"
+    
+    # Para qualquer rmiregistry em execução
     pkill -f "rmiregistry" 2>/dev/null
-    rmiregistry &
+    
+    # Mata sessão tmux anterior se existir
+    tmux kill-session -t rmiregistry 2>/dev/null
+    
+    # Inicia RMI Registry em sessão tmux
+    tmux new-session -d -s rmiregistry -- rmiregistry
     sleep 2
-    echo -e "${GREEN}✓ RMI Registry iniciado${NC}"
+    
+    # Verifica se está rodando
+    if pgrep -f "rmiregistry" > /dev/null; then
+        echo -e "${GREEN}✓ RMI Registry iniciado em sessão tmux 'rmiregistry'${NC}"
+        echo -e "${YELLOW}Use 'tmux attach -t rmiregistry' para ver os logs${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ Erro ao iniciar RMI Registry${NC}"
+        return 1
+    fi
 }
 
 # Função para iniciar o ServerListManager
@@ -114,6 +130,9 @@ start_manager() {
         echo -e "${RED}✗ JAR do ServerListManager não encontrado. Execute a compilação primeiro.${NC}"
         return 1
     fi
+    
+    # Mata sessão anterior se existir
+    tmux kill-session -t serverlistmanager 2>/dev/null
     
     tmux new-session -d -s serverlistmanager -- java -jar target/server-manager-jar-with-dependencies.jar
     sleep 3
@@ -131,6 +150,9 @@ start_server() {
         return 1
     fi
     
+    # Mata sessão anterior se existir
+    tmux kill-session -t "$server_id" 2>/dev/null
+    
     tmux new-session -d -s "$server_id" -- java -jar target/echo-server-jar-with-dependencies.jar "$server_id"
     sleep 2
     echo -e "${GREEN}✓ EchoServer $server_id iniciado em sessão tmux '$server_id'${NC}"
@@ -146,6 +168,9 @@ start_client() {
         return 1
     fi
     
+    # Mata sessão anterior se existir
+    tmux kill-session -t echoclient 2>/dev/null
+    
     tmux new-session -d -s echoclient -- java -jar target/echo-client-jar-with-dependencies.jar
     echo -e "${GREEN}✓ EchoClient iniciado em sessão tmux 'echoclient'${NC}"
     echo -e "${YELLOW}Use 'tmux attach -t echoclient' para interagir com o cliente${NC}"
@@ -155,11 +180,56 @@ start_client() {
 show_status() {
     echo -e "${YELLOW}Status das sessões tmux:${NC}"
     if command -v tmux &> /dev/null; then
-        tmux list-sessions 2>/dev/null || echo -e "${YELLOW}Nenhuma sessão tmux ativa${NC}"
+        sessions=$(tmux list-sessions 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            echo "$sessions"
+            echo ""
+            echo -e "${YELLOW}Processos Java em execução:${NC}"
+            jps | grep -v "Jps"
+            echo ""
+            echo -e "${YELLOW}RMI Registry:${NC}"
+            if pgrep -f "rmiregistry" > /dev/null; then
+                echo -e "${GREEN}✓ RMI Registry está rodando${NC}"
+            else
+                echo -e "${RED}✗ RMI Registry não está rodando${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Nenhuma sessão tmux ativa${NC}"
+        fi
     else
         echo -e "${RED}tmux não está instalado${NC}"
     fi
     echo ""
+}
+
+# Função para conectar a uma sessão tmux
+connect_to_session() {
+    echo -e "${YELLOW}Sessões tmux disponíveis:${NC}"
+    if tmux list-sessions 2>/dev/null; then
+        echo ""
+        echo -e "${YELLOW}Sessões principais:${NC}"
+        echo "  rmiregistry     - RMI Registry"
+        echo "  serverlistmanager - Gerenciador de servidores"
+        echo "  echoclient      - Cliente interativo"
+        echo "  Server1         - Servidor Echo 1"
+        echo "  Server2         - Servidor Echo 2"
+        echo "  Server3         - Servidor Echo 3"
+        echo ""
+        read -p "Digite o nome da sessão para conectar (ou Enter para cancelar): " session_name
+        
+        if [ ! -z "$session_name" ]; then
+            if tmux has-session -t "$session_name" 2>/dev/null; then
+                echo -e "${GREEN}Conectando à sessão '$session_name'...${NC}"
+                echo -e "${YELLOW}Use Ctrl+B depois D para desconectar sem fechar a sessão${NC}"
+                sleep 2
+                tmux attach -t "$session_name"
+            else
+                echo -e "${RED}Sessão '$session_name' não encontrada${NC}"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}Nenhuma sessão tmux ativa${NC}"
+    fi
 }
 
 # Menu principal
@@ -174,8 +244,9 @@ show_menu() {
     echo "6) Adicionar novo servidor"
     echo "7) Iniciar cliente"
     echo "8) Mostrar status das sessões"
-    echo "9) Parar todos os processos"
-    echo "10) Sair"
+    echo "9) Conectar a uma sessão"
+    echo "10) Parar todos os processos"
+    echo "11) Sair"
     echo ""
 }
 
@@ -239,13 +310,43 @@ while true; do
             show_status
             ;;
         9)
-            echo -e "${YELLOW}Parando todos os processos...${NC}"
-            pkill -f "java -jar" 2>/dev/null
-            pkill -f "rmiregistry" 2>/dev/null
-            tmux kill-server 2>/dev/null
-            echo -e "${GREEN}✓ Processos parados${NC}"
+            connect_to_session
             ;;
         10)
+            echo -e "${YELLOW}Parando todos os processos...${NC}"
+            
+            # Para sessões tmux específicas primeiro
+            echo -e "${YELLOW}Finalizando sessões tmux...${NC}"
+            tmux kill-session -t rmiregistry 2>/dev/null
+            tmux kill-session -t serverlistmanager 2>/dev/null
+            tmux kill-session -t echoclient 2>/dev/null
+            tmux kill-session -t Server1 2>/dev/null
+            tmux kill-session -t Server2 2>/dev/null
+            tmux kill-session -t Server3 2>/dev/null
+            
+            # Para qualquer sessão tmux restante com números
+            for i in {1..20}; do
+                tmux kill-session -t "$i" 2>/dev/null
+            done
+            
+            # Para processos Java que possam ter sobrado
+            echo -e "${YELLOW}Finalizando processos Java...${NC}"
+            pkill -f "java -jar" 2>/dev/null
+            pkill -f "rmiregistry" 2>/dev/null
+            
+            # Verifica se ainda há processos rodando
+            sleep 1
+            remaining=$(jps | grep -v "Jps" | wc -l)
+            
+            if [ $remaining -eq 0 ]; then
+                echo -e "${GREEN}✓ Todos os processos foram finalizados com sucesso!${NC}"
+            else
+                echo -e "${YELLOW}Ainda há $remaining processo(s) Java em execução:${NC}"
+                jps | grep -v "Jps"
+                echo -e "${YELLOW}Use 'pkill -9 java' se necessário para forçar o encerramento${NC}"
+            fi
+            ;;
+        11)
             echo "Saindo..."
             exit 0
             ;;
