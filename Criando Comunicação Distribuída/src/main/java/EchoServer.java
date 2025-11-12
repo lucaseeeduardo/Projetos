@@ -27,7 +27,6 @@ public class EchoServer extends UnicastRemoteObject implements EchoService, Mqtt
     private MqttClient mqttClient;
     private ServerListManager serverListManager;
     private ScheduledExecutorService scheduler;
-    private String masterServerId;
     
     public EchoServer(String serverId) throws RemoteException {
         super();
@@ -217,28 +216,25 @@ public class EchoServer extends UnicastRemoteObject implements EchoService, Mqtt
     }
     
     private void startMasterMonitoring() {
-        scheduler.scheduleWithFixedDelay(() -> {
+        scheduler.scheduleAtFixedRate(() -> {
             try {
+                // Apenas clones monitoram o master
                 if (!isMaster) {
-                    String currentMaster = serverListManager.getMasterServer();
-                    if (currentMaster != null && !currentMaster.equals(masterServerId)) {
-                        masterServerId = currentMaster;
-                    }
-                    
-                    if (masterServerId != null) {
-                        try {
-                            EchoService master = (EchoService) Naming.lookup("rmi://localhost/" + masterServerId);
-                            master.isAlive();
-                        } catch (Exception e) {
-                            System.err.println("Master " + masterServerId + " não responde. Solicitando eleição ao gerenciador...");
-                            requestElectionFromManager();
-                        }
+                    if (!serverListManager.checkMasterHealth()) {
+                        // Master falhou, solicita eleição
+                        System.out.println("HEARTBEAT: Health check detectou falha do master. Solicitando eleição...");
+                        serverListManager.requestElection(serverId);
                     }
                 }
-            } catch (Exception e) {
-                System.err.println("Erro no monitoramento: " + e.getMessage());
+            } catch (RemoteException e) {
+                System.err.println("HEARTBEAT: Erro ao monitorar master, tentando solicitar eleição. Erro: " + e.getMessage());
+                try {
+                    serverListManager.requestElection(serverId);
+                } catch (RemoteException ex) {
+                    System.err.println("HEARTBEAT: Falha ao solicitar eleição: " + ex.getMessage());
+                }
             }
-        }, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, TimeUnit.SECONDS);
+        }, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, TimeUnit.SECONDS);
     }
     
     private void requestElectionFromManager() {

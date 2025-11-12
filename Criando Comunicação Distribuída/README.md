@@ -1,3 +1,7 @@
+OBS:
+O EchoServer criar a conexão com o broker, mas o broker já deve estar rodando.
+Após isso, o EchoServer registra o servidorID no serverlistmanager, então ele também já deve estar rodando.
+
 # Sistema de Echo com Replicação Passiva
 
 Este projeto implementa um serviço de Echo distribuído usando RMI (Remote Method Invocation) e MQTT, com replicação passiva para tolerância a falhas.
