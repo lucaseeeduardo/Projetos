@@ -5,7 +5,7 @@
 MQTT_JAR="org.eclipse.paho.client.mqttv3-1.2.5.jar"
 TARGET_CLASSES="target/classes"
 CLASSPATH="$TARGET_CLASSES:$MQTT_JAR"
-NUM_SERVERS=3 # Quantidade de servidores Echo a serem iniciados
+NUM_SERVERS=20 # Quantidade de servidores Echo a serem iniciados
 
 # === Cores para o output ===
 RED='\033[0;31m'
@@ -87,7 +87,7 @@ start_all() {
     echo "Iniciando $NUM_SERVERS EchoServer(s)..."
     for i in $(seq 1 $NUM_SERVERS); do
         tmux new-session -d -s "Server$i" "java -cp $CLASSPATH EchoServer Server$i"
-        sleep 1
+        sleep 0.3
     done
 
     echo -e "${GREEN}✓ Sistema iniciado! Use a opção 'Anexar a uma sessão' para interagir.${NC}"

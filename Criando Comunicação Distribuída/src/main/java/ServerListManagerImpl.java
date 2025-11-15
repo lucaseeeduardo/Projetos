@@ -80,7 +80,11 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
     @Override
     public String getMasterServer() throws RemoteException {
         synchronized (lock) {
-            return serverList.isEmpty() ? null : serverList.getFirst();
+            boolean listaDeServidoresAtivosEstaVazia = serverList.isEmpty();
+            String masterDaLista = serverList.getFirst();
+
+            System.out.printf("o master atual é: %s", masterDaLista);
+            return listaDeServidoresAtivosEstaVazia ? null : masterDaLista;
         }
     }
     
@@ -100,6 +104,8 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
     @Override
     public boolean checkMasterHealth() throws RemoteException {
         synchronized (lock) {
+            System.out.println("[DEBUG] Monitorando Master Health P1");
+            System.out.printf("[DEBUG] Monitorando Master Health - tamanho da lista de servidores: %d", serverList.size());
             if (serverList.isEmpty()) {
                 return false;
             }
@@ -108,6 +114,7 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
             try {
                 EchoService masterService = (EchoService) Naming.lookup("rmi://localhost/" + currentMaster);
                 masterService.isAlive();
+                System.out.println("[DEBUG] Monitorando Master Health P3 - Está ativo");
                 return true;
             } catch (Exception e) {
                 System.out.println("Master " + currentMaster + " não está respondendo");
