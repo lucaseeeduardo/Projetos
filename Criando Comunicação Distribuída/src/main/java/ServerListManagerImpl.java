@@ -80,7 +80,11 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
     @Override
     public String getMasterServer() throws RemoteException {
         synchronized (lock) {
-            return serverList.isEmpty() ? null : serverList.getFirst();
+            boolean listaDeServidoresAtivosEstaVazia = serverList.isEmpty();
+            String masterDaLista = serverList.getFirst();
+
+            System.out.printf("o master atual é: %s", masterDaLista);
+            return listaDeServidoresAtivosEstaVazia ? null : masterDaLista;
         }
     }
     
@@ -100,6 +104,8 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
     @Override
     public boolean checkMasterHealth() throws RemoteException {
         synchronized (lock) {
+            System.out.println("[DEBUG] Monitorando Master Health P1");
+            System.out.printf("[DEBUG] Monitorando Master Health - tamanho da lista de servidores: %d", serverList.size());
             if (serverList.isEmpty()) {
                 return false;
             }
@@ -108,6 +114,7 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
             try {
                 EchoService masterService = (EchoService) Naming.lookup("rmi://localhost/" + currentMaster);
                 masterService.isAlive();
+                System.out.println("[DEBUG] Monitorando Master Health P3 - Está ativo");
                 return true;
             } catch (Exception e) {
                 System.out.println("Master " + currentMaster + " não está respondendo");
@@ -116,80 +123,88 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
         }
     }
     
-    @Override
-    public String electNewMaster() throws RemoteException {
-        synchronized (lock) {
-            electionInProgress = true;
-            try {
-                if (serverList.isEmpty()) {
-                    System.out.println("DECISÃO DO GERENCIADOR: Nenhum servidor disponível para eleição");
-                    return null;
-                }
-                
-                String currentMaster = serverList.peekFirst();
-                String failedMaster = null;
-                
-                // Verifica se o master atual está realmente inativo
+    // Substitua o método electNewMaster() existente por este
+@Override
+public String electNewMaster() throws RemoteException {
+    synchronized (lock) {
+        if (electionInProgress) {
+            return getMasterServer(); // Retorna o master atual se uma eleição já estiver em andamento
+        }
+        electionInProgress = true;
+        try {
+            if (serverList.isEmpty()) {
+                System.out.println("DECISÃO DO GERENCIADOR: Nenhum servidor disponível para eleição");
+                return null;
+            }
+
+            String currentMasterId = serverList.peekFirst();
+            boolean masterIsAlive = false;
+            if (currentMasterId != null) {
                 try {
-                    EchoService masterService = (EchoService) Naming.lookup("rmi://localhost/" + currentMaster);
+                    EchoService masterService = (EchoService) Naming.lookup("rmi://localhost/" + currentMasterId);
                     masterService.isAlive();
-                    System.out.println("DECISÃO DO GERENCIADOR: Master " + currentMaster + " ainda está ativo. Eleição cancelada.");
-                    electionRequests.clear();
-                    return currentMaster;
+                    masterIsAlive = true;
                 } catch (Exception e) {
-                    // Master realmente falhou, proceder com eleição
-                    failedMaster = serverList.pollFirst();
-                    System.out.println("DECISÃO DO GERENCIADOR: Confirmando falha do master " + failedMaster);
-                    System.out.println("DECISÃO DO GERENCIADOR: Removendo " + failedMaster + " da lista de servidores ativos");
+                    // Master não está vivo, continue com a eleição
                 }
-                
-                // DECISÃO CENTRALIZADA: O próximo na lista se torna o novo master
-                String newMaster = serverList.peekFirst();
-                
-                if (newMaster != null) {
-                    System.out.println("╔══════════════════════════════════════════╗");
-                    System.out.println("║   ELEIÇÃO COORDENADA PELO GERENCIADOR   ║");
-                    System.out.println("╠══════════════════════════════════════════╣");
-                    System.out.println("║ Master anterior: " + failedMaster);
-                    System.out.println("║ NOVO MASTER ELEITO: " + newMaster);
-                    System.out.println("║ Algoritmo: First-In-First-Out (FIFO)    ║");
-                    System.out.println("╚══════════════════════════════════════════╝");
-                    
-                    // Notifica o novo master
-                    try {
-                        EchoService newMasterService = (EchoService) Naming.lookup("rmi://localhost/" + newMaster);
-                        newMasterService.setMaster(true);
-                        System.out.println("DECISÃO DO GERENCIADOR: " + newMaster + " foi promovido a MASTER");
-                        
-                        // Notifica todos os outros clones sobre o novo master
-                        for (String serverId : serverList) {
-                            if (!serverId.equals(newMaster)) {
-                                try {
-                                    EchoService cloneService = (EchoService) Naming.lookup("rmi://localhost/" + serverId);
-                                    cloneService.setMaster(false);
-                                    System.out.println("DECISÃO DO GERENCIADOR: " + serverId + " foi informado que é CLONE");
-                                } catch (Exception ex) {
-                                    System.err.println("Erro ao notificar clone " + serverId + ": " + ex.getMessage());
-                                }
+            }
+
+            if (masterIsAlive) {
+                System.out.println("DECISÃO DO GERENCIADOR: Master " + currentMasterId + " ainda está ativo. Eleição cancelada.");
+                return currentMasterId;
+            }
+
+            // Master realmente falhou, proceder com eleição
+            String failedMaster = serverList.pollFirst();
+            if (failedMaster != null) {
+                System.out.println("DECISÃO DO GERENCIADOR: Confirmando falha do master " + failedMaster);
+            }
+
+            // O próximo na lista se torna o novo master
+            String newMasterId = serverList.peekFirst();
+
+            if (newMasterId != null) {
+                System.out.println("╔══════════════════════════════════════════╗");
+                System.out.println("║   ELEIÇÃO COORDENADA PELO GERENCIADOR   ║");
+                System.out.println("╠══════════════════════════════════════════╣");
+                System.out.println("║ Master anterior: " + (failedMaster != null ? failedMaster : "N/A"));
+                System.out.println("║ NOVO MASTER ELEITO: " + newMasterId);
+                System.out.println("╚══════════════════════════════════════════╝");
+
+                // Notifica o novo master para se tornar master
+                try {
+                    EchoService newMasterService = (EchoService) Naming.lookup("rmi://localhost/" + newMasterId);
+                    newMasterService.setMaster(true);
+                    System.out.println("DECISÃO DO GERENCIADOR: " + newMasterId + " foi promovido a MASTER");
+
+                    // Notifica todos os outros clones sobre o novo master (se houver)
+                    for (String serverId : serverList) {
+                        if (!serverId.equals(newMasterId)) {
+                            try {
+                                EchoService cloneService = (EchoService) Naming.lookup("rmi://localhost/" + serverId);
+                                cloneService.setMaster(false); // Garante que são clones
+                            } catch (Exception ex) {
+                                System.err.println("Erro ao notificar clone " + serverId + ": " + ex.getMessage());
                             }
                         }
-                    } catch (Exception e) {
-                        System.err.println("Erro ao promover novo master " + newMaster + ": " + e.getMessage());
-                        // Se o novo master também falhou, tenta o próximo recursivamente
-                        return electNewMaster();
                     }
-                } else {
-                    System.out.println("DECISÃO DO GERENCIADOR: Nenhum servidor disponível para assumir como master");
+                } catch (Exception e) {
+                    System.err.println("Erro ao promover novo master " + newMasterId + ": " + e.getMessage());
+                    // Se a promoção falhar, tenta o próximo recursivamente
+                    return electNewMaster();
                 }
-                
-                electionRequests.clear();
-                return newMaster;
-            } finally {
-                electionInProgress = false;
+            } else {
+                System.out.println("DECISÃO DO GERENCIADOR: Nenhum servidor disponível para assumir como master");
             }
+
+            electionRequests.clear();
+            return newMasterId;
+        } finally {
+            electionInProgress = false;
         }
     }
-    
+}
+
     @Override
     public List<String> getAllMessages() throws RemoteException {
         return new ArrayList<>(globalMessages);
@@ -206,33 +221,22 @@ public class ServerListManagerImpl extends UnicastRemoteObject implements Server
     
     public static void main(String[] args) {
         try {
-            // Cria o RMI Registry se ainda não existir
+            // Adicionado para criar o RMI Registry programaticamente
             try {
                 LocateRegistry.createRegistry(1099);
-                System.out.println("RMI Registry criado na porta 1099");
-            } catch (Exception e) {
-                System.out.println("RMI Registry já existe");
+                System.out.println("RMI Registry criado na porta 1099.");
+            } catch (RemoteException e) {
+                // Se o registry já existir, uma exceção será lançada, o que é esperado
+                // em cenários de reinicialização.
+                System.out.println("RMI Registry já existente na porta 1099.");
             }
-            
-            // Cria e registra o gerenciador
+
             ServerListManagerImpl manager = new ServerListManagerImpl();
             Naming.rebind("rmi://localhost/ServerListManager", manager);
-            
-            System.out.println("ServerListManager iniciado e registrado no RMI Registry");
+            System.out.println("ServerListManager iniciado e registrado no RMI Registry.");
             System.out.println("Aguardando registros de servidores...");
-            
-            // Mantém o gerenciador em execução
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                try {
-                    Naming.unbind("rmi://localhost/ServerListManager");
-                    System.out.println("ServerListManager encerrado");
-                } catch (Exception e) {
-                    System.err.println("Erro ao encerrar ServerListManager: " + e.getMessage());
-                }
-            }));
-            
         } catch (Exception e) {
-            System.err.println("Erro ao iniciar ServerListManager: " + e.getMessage());
+            System.err.println("Erro fatal ao iniciar ServerListManager: " + e.getMessage());
             e.printStackTrace();
         }
     }

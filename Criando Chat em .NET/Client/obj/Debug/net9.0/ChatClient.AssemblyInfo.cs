@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ChatClient")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+00fe1ee489f56df1c4e1528e1d8d1bde1fed0264")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+31f3bfb8c477dc96736e81b9a222c1119a83ec0f")]
 [assembly: System.Reflection.AssemblyProductAttribute("ChatClient")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ChatClient")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,147 +1,158 @@
 #!/bin/bash
+# filepath: /home/personal/Projetos/Criando Comunicação Distribuída/run_scripts.sh
 
-# Script para facilitar a execução do sistema de Echo com Replicação
+# === Configuração ===
+MQTT_JAR="org.eclipse.paho.client.mqttv3-1.2.5.jar"
+TARGET_CLASSES="target/classes"
+CLASSPATH="$TARGET_CLASSES:$MQTT_JAR"
+NUM_SERVERS=20 # Quantidade de servidores Echo a serem iniciados
 
-echo "=== Sistema de Echo com Replicação Passiva ==="
-echo ""
-
-# Cores para output
+# === Cores para o output ===
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m' # Sem Cor
 
-# Função para verificar se o Mosquitto está rodando
-check_mosquitto() {
-    if systemctl is-active --quiet mosquitto; then
-        echo -e "${GREEN}✓ Mosquitto MQTT Broker está rodando${NC}"
+# --- Funções de Verificação e Setup ---
+
+# Função para verificar pré-requisitos
+check_prerequisites() {
+    echo -e "${YELLOW}Verificando pré-requisitos...${NC}"
+    local all_ok=true
+    command -v java &>/dev/null || { echo -e "${RED}✗ Java não encontrado.${NC}"; all_ok=false; }
+    command -v mvn &>/dev/null || { echo -e "${RED}✗ Maven não encontrado.${NC}"; all_ok=false; }
+    command -v tmux &>/dev/null || { echo -e "${RED}✗ tmux não encontrado.${NC}"; all_ok=false; }
+    (systemctl is-active --quiet mosquitto || pgrep -x "mosquitto" > /dev/null) || { echo -e "${RED}✗ Broker Mosquitto não está rodando.${NC}"; all_ok=false; }
+
+    if [ "$all_ok" = true ]; then
+        echo -e "${GREEN}✓ Todos os pré-requisitos estão OK.${NC}"
         return 0
     else
-        echo -e "${RED}✗ Mosquitto MQTT Broker não está rodando${NC}"
-        echo -e "${YELLOW}Iniciando Mosquitto...${NC}"
-        sudo systemctl start mosquitto
-        sleep 2
-        if systemctl is-active --quiet mosquitto; then
-            echo -e "${GREEN}✓ Mosquitto iniciado com sucesso${NC}"
-            return 0
-        else
-            echo -e "${RED}Erro ao iniciar Mosquitto. Por favor, instale e inicie manualmente.${NC}"
-            return 1
-        fi
+        echo -e "${RED}✗ Instale as dependências faltantes e inicie o Mosquitto.${NC}"
+        return 1
+    fi
+}
+
+# Função para baixar dependência MQTT
+download_mqtt_dep() {
+    if [ ! -f "$MQTT_JAR" ]; then
+        echo -e "${YELLOW}Baixando dependência MQTT ($MQTT_JAR)...${NC}"
+        wget -q https://repo1.maven.org/maven2/org/eclipse/paho/org.eclipse.paho.client.mqttv3/1.2.5/$MQTT_JAR
+        echo -e "${GREEN}✓ Download concluído.${NC}"
     fi
 }
 
 # Função para compilar o projeto
 compile_project() {
-    echo -e "${YELLOW}Compilando projeto...${NC}"
-    mvn clean package
+    echo -e "${YELLOW}Compilando o projeto com 'mvn clean compile'...${NC}"
+    mvn clean compile
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Projeto compilado com sucesso${NC}"
+        echo -e "${GREEN}✓ Projeto compilado com sucesso.${NC}"
         return 0
     else
-        echo -e "${RED}✗ Erro ao compilar projeto${NC}"
+        echo -e "${RED}✗ Falha na compilação.${NC}"
         return 1
     fi
 }
 
-# Função para iniciar o ServerListManager
-start_manager() {
-    echo -e "${YELLOW}Iniciando ServerListManager...${NC}"
-    gnome-terminal --title="ServerListManager" -- java -jar target/server-manager-jar-with-dependencies.jar &
-    sleep 3
-    echo -e "${GREEN}✓ ServerListManager iniciado${NC}"
+# --- Funções de Controle do Sistema ---
+
+# Função para parar todos os processos
+stop_all() {
+    echo -e "${YELLOW}Parando todos os processos...${NC}"
+    # A linha do rmiregistry foi removida pois ele agora é gerenciado pelo ServerListManager
+    tmux kill-session -t serverlistmanager 2>/dev/null
+    tmux kill-session -t echoclient 2>/dev/null
+    for i in $(seq 1 $NUM_SERVERS); do
+        tmux kill-session -t "Server$i" 2>/dev/null
+    done
+    pkill -f "java -cp $CLASSPATH" 2>/dev/null
+    echo -e "${GREEN}✓ Processos finalizados.${NC}"
 }
 
-# Função para iniciar um servidor Echo
-start_server() {
-    local server_id=$1
-    echo -e "${YELLOW}Iniciando EchoServer: $server_id...${NC}"
-    gnome-terminal --title="$server_id" -- java -jar target/echo-server-jar-with-dependencies.jar "$server_id" &
-    sleep 2
-    echo -e "${GREEN}✓ EchoServer $server_id iniciado${NC}"
-}
+# Função para iniciar o sistema completo
+start_all() {
+    stop_all # Garante um ambiente limpo
+    echo -e "${YELLOW}Iniciando o sistema completo...${NC}"
 
-# Função para iniciar o cliente
-start_client() {
-    echo -e "${YELLOW}Iniciando EchoClient...${NC}"
-    gnome-terminal --title="EchoClient" -- java -jar target/echo-client-jar-with-dependencies.jar &
-    echo -e "${GREEN}✓ EchoClient iniciado${NC}"
-}
-
-# Menu principal
-show_menu() {
-    echo ""
-    echo "Escolha uma opção:"
-    echo "1) Compilar projeto"
-    echo "2) Iniciar sistema completo (Manager + 3 Servidores + Cliente)"
-    echo "3) Iniciar apenas ServerListManager"
-    echo "4) Adicionar novo servidor"
-    echo "5) Iniciar cliente"
-    echo "6) Parar todos os processos Java"
-    echo "7) Verificar status do Mosquitto"
-    echo "8) Sair"
-    echo ""
-}
-
-# Loop principal
-while true; do
-    show_menu
-    read -p "Opção: " choice
+    # 1. Iniciar ServerListManager (que agora também inicia o RMI Registry)
+    echo "Iniciando ServerListManager..."
+    tmux new-session -d -s serverlistmanager "java -cp $CLASSPATH ServerListManagerImpl"
     
+    # 2. Pausa CRÍTICA para garantir que o Manager e o Registry estejam prontos
+    echo -e "${YELLOW}Aguardando 5 segundos para o ServerListManager se registrar...${NC}"
+    sleep 5
+
+    # 3. Iniciar EchoServers
+    echo "Iniciando $NUM_SERVERS EchoServer(s)..."
+    for i in $(seq 1 $NUM_SERVERS); do
+        tmux new-session -d -s "Server$i" "java -cp $CLASSPATH EchoServer Server$i"
+        sleep 0.3
+    done
+
+    echo -e "${GREEN}✓ Sistema iniciado! Use a opção 'Anexar a uma sessão' para interagir.${NC}"
+}
+
+# Função para iniciar apenas o cliente
+start_client() {
+    echo -e "${YELLOW}Iniciando o cliente em uma nova sessão tmux...${NC}"
+    tmux kill-session -t echoclient 2>/dev/null
+    # Inicia o cliente e anexa diretamente
+    tmux new-session -s echoclient "java -cp $CLASSPATH EchoClient"
+}
+
+# Função para anexar a uma sessão
+attach_session() {
+    echo -e "${YELLOW}Sessões tmux ativas:${NC}"
+    tmux list-sessions -F '#S'
+    echo ""
+    read -p "Digite o nome da sessão para anexar: " session_name
+    if tmux has-session -t "$session_name" 2>/dev/null; then
+        tmux attach-session -t "$session_name"
+    else
+        echo -e "${RED}Sessão '$session_name' não encontrada.${NC}"
+    fi
+}
+
+# --- Menu Principal ---
+while true; do
+    echo ""
+    echo "=== Menu Principal ==="
+    echo "1. Setup Completo (Verificar, Compilar e Iniciar Tudo)"
+    echo "2. Iniciar Sistema (RMI, Manager, Servidores)"
+    echo "3. Parar Tudo"
+    echo "4. Iniciar Cliente Interativo"
+    echo "5. Anexar a uma sessão tmux (Ver Logs)"
+    echo "6. Apenas Compilar Projeto"
+    echo "7. Sair"
+    echo ""
+    read -p "Escolha uma opção: " choice
+
     case $choice in
         1)
-            compile_project
+            check_prerequisites && download_mqtt_dep && compile_project && start_all
             ;;
         2)
-            # Verifica Mosquitto
-            if ! check_mosquitto; then
-                echo -e "${RED}Não é possível continuar sem o Mosquitto${NC}"
-                continue
-            fi
-            
-            # Compila se necessário
-            if [ ! -f "target/server-manager-jar-with-dependencies.jar" ]; then
-                compile_project
-            fi
-            
-            # Inicia componentes
-            start_manager
-            start_server "Server1"
-            start_server "Server2"
-            start_server "Server3"
-            sleep 2
-            start_client
-            
-            echo -e "${GREEN}Sistema completo iniciado!${NC}"
+            start_all
             ;;
         3)
-            start_manager
+            stop_all
             ;;
         4)
-            read -p "Digite o ID do novo servidor: " server_id
-            if [ ! -z "$server_id" ]; then
-                start_server "$server_id"
-            else
-                echo -e "${RED}ID do servidor não pode ser vazio${NC}"
-            fi
-            ;;
-        5)
             start_client
             ;;
+        5)
+            attach_session
+            ;;
         6)
-            echo -e "${YELLOW}Parando todos os processos Java...${NC}"
-            pkill -f "java -jar"
-            echo -e "${GREEN}✓ Processos parados${NC}"
+            download_mqtt_dep && compile_project
             ;;
         7)
-            check_mosquitto
-            ;;
-        8)
             echo "Saindo..."
             exit 0
             ;;
         *)
-            echo -e "${RED}Opção inválida${NC}"
+            echo -e "${RED}Opção inválida. Tente novamente.${NC}"
             ;;
     esac
 done

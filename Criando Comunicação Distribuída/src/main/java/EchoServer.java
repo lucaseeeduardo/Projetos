@@ -19,7 +19,7 @@ public class EchoServer extends UnicastRemoteObject implements EchoService, Mqtt
     private static final String MQTT_BROKER = "tcp://localhost:1883";
     private static final String REPLICATION_TOPIC = "echo/replication";
     private static final int HEARTBEAT_INTERVAL = 3; // segundos
-    private static final int HEARTBEAT_TIMEOUT = 10; // segundos
+    private static final int HEARTBEAT_TIMEOUT = 5; // segundos
     
     private String serverId;
     private boolean isMaster;
@@ -27,7 +27,6 @@ public class EchoServer extends UnicastRemoteObject implements EchoService, Mqtt
     private MqttClient mqttClient;
     private ServerListManager serverListManager;
     private ScheduledExecutorService scheduler;
-    private String masterServerId;
     
     public EchoServer(String serverId) throws RemoteException {
         super();
@@ -58,6 +57,7 @@ public class EchoServer extends UnicastRemoteObject implements EchoService, Mqtt
                 System.out.println("Servidor " + serverId + " é um CLONE");
                 
                 // Inicia monitoramento do master
+                System.out.println("Começando a monitorar o master");
                 startMasterMonitoring();
             }
             
@@ -217,42 +217,51 @@ public class EchoServer extends UnicastRemoteObject implements EchoService, Mqtt
     }
     
     private void startMasterMonitoring() {
-        scheduler.scheduleWithFixedDelay(() -> {
-            try {
-                if (!isMaster) {
-                    String currentMaster = serverListManager.getMasterServer();
-                    if (currentMaster != null && !currentMaster.equals(masterServerId)) {
-                        masterServerId = currentMaster;
-                    }
-                    
-                    if (masterServerId != null) {
-                        try {
-                            EchoService master = (EchoService) Naming.lookup("rmi://localhost/" + masterServerId);
-                            master.isAlive();
-                        } catch (Exception e) {
-                            System.err.println("Master " + masterServerId + " não responde. Solicitando eleição ao gerenciador...");
-                            requestElectionFromManager();
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                System.err.println("Erro no monitoramento: " + e.getMessage());
+        scheduler.scheduleAtFixedRate(() -> {
+           
+            if (!isMaster) {
+                System.out.println("[DEBUG] Monitorando master P1 -");
+                requestElectionFromManager();
+
+                // if (!serverListManager.checkMasterHealth()) {
+                //     System.out.println("[DEBUG] Monitorando master P2");
+                //     // Master falhou, solicita eleição
+                //     System.out.println("HEARTBEAT: Health check detectou falha do master. Solicitando eleição...");
+                //     serverListManager.requestElection(serverId);
+                // }
             }
-        }, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, TimeUnit.SECONDS);
+            
+        }, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, TimeUnit.SECONDS);
     }
     
+    /**
+     * Solicita ao {@link ServerListManager} uma nova eleição de master.
+     *
+     * <p>
+     * Este método é chamado quando um servidor clone detecta a falha do master.
+     * Ele pede ao gerenciador para eleger um novo master e, com base no
+     * resultado, atualiza seu próprio status de mestre/clono utilizando o método
+     * {@link #setMaster(boolean)}. Isso substitui a antiga atribuição a uma
+     * variável inexistente (masterServerId), que gerava erros de compilação.
+     * </p>
+     */
     private void requestElectionFromManager() {
         try {
             System.out.println("Clone " + serverId + " detectou falha e está solicitando eleição ao ServerListManager");
             String newMaster = serverListManager.requestElection(serverId);
-            
-            if (newMaster != null && newMaster.equals(serverId)) {
-                // Este servidor foi eleito pelo gerenciador como novo master
-                System.out.println("NOTIFICAÇÃO: ServerListManager elegeu este servidor (" + serverId + ") como novo MASTER!");
-                masterServerId = serverId;
-            } else if (newMaster != null) {
-                masterServerId = newMaster;
-                System.out.println("NOTIFICAÇÃO: ServerListManager elegeu " + newMaster + " como novo MASTER");
+            // Se houver um novo master determinado pelo gerenciador
+            if (newMaster != null) {
+                if (newMaster.equals(serverId)) {
+                    // Este servidor foi eleito pelo gerenciador como novo master
+                    System.out.println("NOTIFICAÇÃO: ServerListManager elegeu este servidor (" + serverId + ") como novo MASTER!");
+                    // Atualiza o estado interno para refletir que agora somos o master
+                    setMaster(true);
+                } else {
+                    // Outro servidor foi eleito. Este servidor permanece/clona.
+                    System.out.println("NOTIFICAÇÃO: ServerListManager elegeu " + newMaster + " como novo MASTER");
+                    // Garante que não somos o master
+                    setMaster(false);
+                }
             }
         } catch (Exception e) {
             System.err.println("Erro ao solicitar eleição: " + e.getMessage());

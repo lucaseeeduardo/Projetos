@@ -28,3 +28,18 @@ C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\Chat\obj\Debu
 C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\Chat\obj\Debug\net9.0\Chat.pdb
 C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\Chat\obj\Debug\net9.0\Chat.genruntimeconfig.cache
 C:\Users\LucasEduardo\Desktop\personal\Projetos\Threads\ChatServer\Chat\obj\Debug\net9.0\ref\Chat.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\bin\Debug\net9.0\Chat.exe
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\bin\Debug\net9.0\Chat.deps.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\bin\Debug\net9.0\Chat.runtimeconfig.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\bin\Debug\net9.0\Chat.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\bin\Debug\net9.0\Chat.pdb
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.AssemblyInfoInputs.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.AssemblyInfo.cs
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.csproj.CoreCompileInputs.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.sourcelink.json
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\refint\Chat.dll
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.pdb
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\Chat.genruntimeconfig.cache
+C:\Users\LucasEduardo\Desktop\personal\Projetos\Criando Chat em .NET\Server\obj\Debug\net9.0\ref\Chat.dll
