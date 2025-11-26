@@ -1,4 +1,5 @@
 ServerListManagerImpl.class
+EchoService.class
 EchoServer.class
-EchoClient.class
 ServerListManager.class
+EchoClient.class
